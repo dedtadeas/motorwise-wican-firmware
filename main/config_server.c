@@ -1059,6 +1059,11 @@ static esp_err_t upload_post_handler(httpd_req_t *req)
     char filepath[FILE_PATH_MAX];
     uint32_t total_size = 0;
 
+    // Motorwise read-only build: a firmware sent over Wi-Fi could remove the read-only gate, so updates go over
+    // USB only, which needs the unit in hand.
+    httpd_resp_send_err(req, HTTPD_403_FORBIDDEN, "Firmware updates over Wi-Fi are off in this read-only build. Update over USB.");
+    return ESP_FAIL;
+
     if(config_server_get_ble_config())
     {
     	ble_disable();
@@ -1617,7 +1622,7 @@ static void config_server_load_cfg(char *cfg)
 		goto config_error;
 	}
 	strcpy(device_config.sta_pass, key->valuestring);
-	ESP_LOGI(TAG, "device_config.sta_pass: %s", device_config.sta_pass);
+	ESP_LOGI(TAG, "device_config.sta_pass: ***");
 
 	key = cJSON_GetObjectItem(root,"can_datarate");
 	if(key == 0)
@@ -1662,7 +1667,7 @@ static void config_server_load_cfg(char *cfg)
 		goto config_error;
 	}
 	strcpy(device_config.ap_pass, key->valuestring);
-	ESP_LOGE(TAG, "device_config.ap_pass: %s", device_config.ap_pass);
+	ESP_LOGE(TAG, "device_config.ap_pass: ***");
 
 	key = cJSON_GetObjectItem(root,"protocol");
 	if(key == 0)
@@ -1686,7 +1691,7 @@ static void config_server_load_cfg(char *cfg)
 		goto config_error;
 	}
 	strcpy(device_config.ble_pass, key->valuestring);
-	ESP_LOGE(TAG, "device_config.ble_pass: %s", device_config.ble_pass);
+	ESP_LOGE(TAG, "device_config.ble_pass: ***");
 
 	key = cJSON_GetObjectItem(root,"sleep_status");
 	if(key == 0)
@@ -1745,7 +1750,7 @@ static void config_server_load_cfg(char *cfg)
 	}
 
 	strcpy(device_config.batt_alert_pass, key->valuestring);
-	ESP_LOGE(TAG, "device_config.batt_alert_pass: %s", device_config.batt_alert_pass);
+	ESP_LOGE(TAG, "device_config.batt_alert_pass: ***");
 	//*****
 
 	//*****
@@ -1822,7 +1827,7 @@ static void config_server_load_cfg(char *cfg)
 	}
 
 	strcpy(device_config.batt_mqtt_pass, key->valuestring);
-	ESP_LOGE(TAG, "device_config.batt_mqtt_pass: %s", device_config.batt_mqtt_pass);
+	ESP_LOGE(TAG, "device_config.batt_mqtt_pass: ***");
 	//*****
 
 	//*****
@@ -1890,7 +1895,7 @@ static void config_server_load_cfg(char *cfg)
 	}
 
 	strcpy(device_config.mqtt_pass, key->valuestring);
-	ESP_LOGE(TAG, "device_config.mqtt_pass: %s", device_config.mqtt_pass);
+	ESP_LOGE(TAG, "device_config.mqtt_pass: ***");
 	//*****
 
 	//*****
@@ -2201,7 +2206,7 @@ static httpd_handle_t config_server_init(void)
 		fread(device_config_file, sizeof(char), filesize, f);
 		device_config_file[filesize] = 0;
 		fseek(f, 0, SEEK_SET);
-		ESP_LOGI(TAG, "config.json: %s", device_config_file);
+		ESP_LOGI(TAG, "config.json loaded (%u bytes)", (unsigned)strlen(device_config_file));
 		config_server_load_cfg(device_config_file);
 		
 		FILE* f1 = fopen(FS_MOUNT_POINT"/mqtt_canfilt.json", "r");

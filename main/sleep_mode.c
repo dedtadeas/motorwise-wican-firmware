@@ -48,6 +48,7 @@
 #include "esp_adc/adc_cali_scheme.h"
 #include "esp_adc/adc_oneshot.h"
 #include "sleep_mode.h"
+#include "elm327.h"
 #include "ble.h"
 #include "esp_sleep.h"
 #include "lwip/sockets.h"
@@ -397,7 +398,11 @@ static void adc_task(void *pvParameters)
 						sleep_state = RUN_STATE;
 					}
 
-					if((esp_timer_get_time() - sleep_detect_time) > sleep_time)
+					// Motorwise: a smart alternator lets the voltage sit near 13 V while driving (T6.1, 13 Nov 2026:
+					// 13.04-13.1 V for the last 8 minutes of a drive), so low voltage alone isn't "parked". Sleep only
+					// once no app has asked the car for anything for the same time.
+					if((esp_timer_get_time() - sleep_detect_time) > sleep_time &&
+					   (esp_timer_get_time() - elm327_last_request_time) > sleep_time)
 					{
 						sleep_state = SLEEP_STATE;
 	//    	    		wifi_network_deinit();
@@ -409,6 +414,13 @@ static void adc_task(void *pvParameters)
 				case SLEEP_STATE:
 				{
 					ESP_LOGI(TAG, "Go to sleep");
+					// Motorwise: wake when the car's bus wakes (door, key), as the vLinker does. The voltage alone
+					// misses starts: the T6.1's smart alternator can run the engine at 13.1 V for many minutes.
+					if(can_bus_active(150))
+					{
+						ESP_LOGI(TAG, "bus traffic, wake up now...");
+						esp_restart();
+					}
 					if(battery_voltage > sleep_voltage)
 					{
 						wakeup_detect_time = esp_timer_get_time();

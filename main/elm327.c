@@ -33,6 +33,7 @@
 #include "driver/twai.h"
 #include "slcan.h"
 #include "can.h"
+#include "read_only.h"
 #include "std_pid.h"
 #include "sleep_mode.h"
 #include "elm327.h"
@@ -472,6 +473,13 @@ static char* elm327_set_protocol(const char* command_str)
 		new_protocol = command_str[2];
 	}
 
+	// Motorwise: "automatic" (ATSP0) can't search here, so it means the usual OBD bus, 11-bit CAN at 500 kbit/s,
+	// instead of a protocol on which every request fails.
+	if(new_protocol == '0')
+	{
+		new_protocol = '6';
+	}
+
 	if(new_protocol == elm327_config.protocol)
 	{
 		return (char*)ok_str;
@@ -742,9 +750,13 @@ static void elm327_send_flow_control_frame(twai_message_t *first_frame)
 	can_send(&txframe, 1);
 }
 
+// Motorwise: when the last request for the car was made, so sleep never cuts a drive whose voltage runs low.
+volatile int64_t elm327_last_request_time = 0;
+
 static int8_t elm327_request(char *cmd, char *rsp, QueueHandle_t *queue)
 {
 	twai_message_t txframe;
+	elm327_last_request_time = esp_timer_get_time();
 	uint8_t cmd_data_length;
 
 	ESP_LOGI(TAG, "PID req, cmd_buffer: %s", cmd);
@@ -834,6 +846,14 @@ static int8_t elm327_request(char *cmd, char *rsp, QueueHandle_t *queue)
 	{
 		elm327_can_log(&txframe, ELM327_CAN_TX);
 	}
+	// Read-only: say so at once instead of waiting for an answer that can't come.
+	if(!read_only_allows(txframe.identifier, txframe.extd, txframe.rtr, txframe.data_length_code, txframe.data))
+	{
+		strcat(rsp, "REFUSED\r\r>");
+		elm327_response((char*)rsp, 0, queue);
+		return 0;
+	}
+
 	while( xQueueReceive(*can_rx_queue, ( void * ) &rx_frame, pdMS_TO_TICKS(1)) == pdPASS );
 	can_flush_rx();
 	can_send(&txframe, 1);

@@ -33,4 +33,6 @@ void elm327_unlock(void);
 uint32_t elm327_get_identifier(void);
 uint32_t elm327_get_rx_address(void);
 uint8_t elm327_ready_to_receive(void);
+extern volatile int64_t elm327_last_request_time;
+
 #endif

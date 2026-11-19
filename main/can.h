@@ -67,4 +67,5 @@ bool can_is_enabled(void);
 uint8_t can_get_bitrate(void);
 uint32_t can_msgs_to_rx(void);
 void can_flush_rx(void);
+bool can_bus_active(uint32_t listen_ms);
 #endif

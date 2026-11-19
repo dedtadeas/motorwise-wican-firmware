@@ -34,6 +34,7 @@
 #include "driver/twai.h"
 #include "can.h"
 #include "hw_config.h"
+#include "read_only.h"
 
 static EventGroupHandle_t s_can_event_group = NULL;
 #define CAN_ENABLE_BIT 		BIT0
@@ -270,6 +271,8 @@ void can_init(uint8_t bitrate)
 }
 
 
+extern volatile uint32_t can_rx_frames;
+
 esp_err_t can_receive(twai_message_t *message, TickType_t ticks_to_wait)
 {
 	esp_err_t ret;
@@ -327,8 +330,27 @@ esp_err_t can_receive(twai_message_t *message, TickType_t ticks_to_wait)
 	// }
 	// else
 	{
-		return twai_receive(message, ticks_to_wait);
+		esp_err_t got = twai_receive(message, ticks_to_wait);
+		if(got == ESP_OK) can_rx_frames++;
+		return got;
 	}
+}
+
+// Motorwise: every frame received, so sleep can tell whether the car's bus woke up.
+volatile uint32_t can_rx_frames = 0;
+
+bool can_bus_active(uint32_t listen_ms)
+{
+	// Listen-only: the transceiver doesn't even acknowledge frames, so the car can't tell the reader is there.
+	uint32_t before = can_rx_frames;
+	can_disable();
+	can_set_silent(1);
+	can_enable();
+	vTaskDelay(pdMS_TO_TICKS(listen_ms));
+	bool active = can_rx_frames != before || can_msgs_to_rx() > 0;
+	can_disable();
+	can_set_silent(0);
+	return active;
 }
 
 esp_err_t can_send(twai_message_t *message, TickType_t ticks_to_wait)
@@ -339,6 +361,15 @@ esp_err_t can_send(twai_message_t *message, TickType_t ticks_to_wait)
 //							pdFALSE,
 //							portMAX_DELAY);
 	EventBits_t uxBits = xEventGroupGetBits(s_can_event_group);
+
+	// Motorwise read-only gate: nothing reaches the bus unless it is a reading request or flow control.
+	const char *refused = read_only_check(message->identifier, message->extd, message->rtr,
+										  message->data_length_code, message->data);
+	if(refused != NULL)
+	{
+		ESP_LOGW("read_only", "refused %03lX: %s", (unsigned long)message->identifier, refused);
+		return ESP_ERR_NOT_SUPPORTED;
+	}
 
 	if(uxBits & CAN_ENABLE_BIT)
 	{

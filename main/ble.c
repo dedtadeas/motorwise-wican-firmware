@@ -814,7 +814,7 @@ void ble_init(QueueHandle_t *xTXp_Queue, QueueHandle_t *xRXp_Queue, uint8_t conn
 		strcpy((char*)dev_name, (char*)uid);
 		conn_led = connected_led;
 		ble_pass_key = passkey;
-		ESP_LOGW(GATTS_TABLE_TAG, "ble passkey: %lu", ble_pass_key);
+		ESP_LOGW(GATTS_TABLE_TAG, "ble passkey set");
 	}
 
 	if(xBle_TX_Queue == NULL)
