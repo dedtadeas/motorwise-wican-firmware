@@ -22,24 +22,33 @@
 #include "freertos/task.h"
 #include  "freertos/queue.h"
 #include "freertos/event_groups.h"
+#include "sdkconfig.h"
+#if !CONFIG_MOTORWISE_BLE_ONLY
 #include "esp_wifi.h"
+#endif
 #include "esp_system.h"
 #include "esp_event.h"
 #include "nvs_flash.h"
 #include "driver/gpio.h"
 #include "esp_log.h"
 #include <string.h>
+#if !CONFIG_MOTORWISE_BLE_ONLY
 #include "comm_server.h"
+#endif
 #include "lwip/sockets.h"
 #include "driver/twai.h"
 #include "types.h"
 #include "esp_timer.h"
+#if !CONFIG_MOTORWISE_BLE_ONLY
 #include "config_server.h"
+#endif
 #include "realdash.h"
 #include "slcan.h"
 #include "can.h"
 #include "ble.h"
+#if !CONFIG_MOTORWISE_BLE_ONLY
 #include "wifi_network.h"
+#endif
 #include "esp_mac.h"
 #include "esp_ota_ops.h"
 #include "nvs.h"
@@ -55,7 +64,11 @@
 #include "lwip/dns.h"
 #include "lwip/netdb.h"
 #include "esp_log.h"
+#if CONFIG_MOTORWISE_BLE_ONLY
+#include "mw_settings.h"
+#else
 #include "mqtt_client.h"
+#endif
 #include "ver.h"
 #include "math.h"
 #include "dev_status.h"
@@ -75,13 +88,16 @@
 
 static adc_channel_t voltage_adc_ch = ADC_CHANNEL_4;
 static bool calibrated = false;
+#if !CONFIG_MOTORWISE_BLE_ONLY
 static EventGroupHandle_t s_mqtt_event_group = NULL;
+#endif
 static float sleep_voltage = 13.1f;
 static uint8_t enable_sleep = 0;
 static QueueHandle_t voltage_queue = NULL;
 adc_oneshot_unit_handle_t adc_handle;
 static adc_cali_handle_t adc1_cali_chan0_handle = NULL;
 
+#if !CONFIG_MOTORWISE_BLE_ONLY
 static void mqtt_event_handler(void *handler_args, esp_event_base_t base, int32_t event_id, void *event_data)
 {
     ESP_LOGD(TAG, "Event dispatched from event loop base=%s, event_id=%ld", base, event_id);
@@ -179,6 +195,8 @@ static void mqtt_init(void)
     	ESP_LOGE(TAG, "unable to connect to broker...");
     }
 }
+
+#endif
 
 static void calibration_init(void)
 {
@@ -340,6 +358,10 @@ static void adc_task(void *pvParameters)
     static float alert_voltage = 0;
     static uint64_t alert_time;
 	uint64_t sleep_time = 0;
+#if CONFIG_MOTORWISE_BLE_ONLY
+    // No battery alert: it would need Wi-Fi.
+    (void)pub_time; (void)alert_voltage; (void)alert_time;
+#else
     alert_time = config_server_get_alert_time();
     alert_time *= (3600000000);
     ESP_LOGW(TAG, "%" PRIu64 "\n", alert_time);
@@ -348,13 +370,18 @@ static void adc_task(void *pvParameters)
     {
     	alert_voltage = 16.0f;
     }
+#endif
 
     oneshot_adc_init();
 
+#if CONFIG_MOTORWISE_BLE_ONLY
+	sleep_time = MW_SLEEP_MINUTES;
+#else
 	if(config_server_get_sleep_time((uint32_t*)&sleep_time) == -1)
 	{
 		sleep_time = 3;
 	}
+#endif
 	sleep_time *= (60*1000000); //convert to microseconds
 
     while(1)
@@ -428,6 +455,7 @@ static void adc_task(void *pvParameters)
 						sleep_state = WAKEUP_STATE;
 					}
 
+#if !CONFIG_MOTORWISE_BLE_ONLY
 					if(config_server_get_battery_alert_config())
 					{
 						if(battery_voltage < alert_voltage)
@@ -472,6 +500,7 @@ static void adc_task(void *pvParameters)
 							}
 						}
 					}
+#endif
 					break;
 				}
 				case WAKEUP_STATE:
@@ -500,7 +529,9 @@ static void adc_task(void *pvParameters)
 			{
 				ESP_LOGW(TAG, "sleeping");
 				can_disable();
+#if !CONFIG_MOTORWISE_BLE_ONLY
 				wifi_network_deinit();
+#endif
 				ble_disable();
 				esp_sleep_enable_timer_wakeup(2*1000000);
 				esp_light_sleep_start();;
@@ -532,7 +563,9 @@ int8_t sleep_mode_init(uint8_t enable, float sleep_volt)
 	enable_sleep = enable;
 	sleep_voltage = sleep_volt;
 	ESP_LOGW(TAG, "sleep_volt: %2.2f", sleep_volt);
+#if !CONFIG_MOTORWISE_BLE_ONLY
 	s_mqtt_event_group = xEventGroupCreate();
+#endif
 	voltage_queue = xQueueCreate(1, sizeof( float) );
 	xTaskCreate(adc_task, "adc_task", 4096, (void*)AF_INET, 5, NULL);
 

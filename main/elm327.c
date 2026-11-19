@@ -34,6 +34,8 @@
 #include "slcan.h"
 #include "can.h"
 #include "read_only.h"
+#include "sdkconfig.h"
+#include "mw_settings.h"
 #include "std_pid.h"
 #include "sleep_mode.h"
 #include "elm327.h"
@@ -234,6 +236,13 @@ static char* elm327_space_on_off(const char* command_str)
 
 static char* elm327_device_description(const char* command_str)
 {
+#if CONFIG_MOTORWISE_BLE_ONLY
+	// Motorwise: AT@1 names this firmware so an app can tell it from a stock WiCAN. ATI and ATZ are unchanged.
+	if(!strcmp(command_str, "@1"))
+	{
+		return (char*)MW_DEVICE_DESCRIPTION;
+	}
+#endif
 	return (char*)device_description;
 }
 

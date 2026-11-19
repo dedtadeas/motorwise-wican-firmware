@@ -46,9 +46,12 @@
 #include "esp_gatt_common_api.h"
 #include "types.h"
 #include "ble.h"
+#include "sdkconfig.h"
+#if !CONFIG_MOTORWISE_BLE_ONLY
 #include "comm_server.h"
 #include "config_server.h"
 #include "wifi_network.h"
+#endif
 #include "dev_status.h"
 
 /* Attributes State Machine */
@@ -499,7 +502,11 @@ static void gatts_profile_event_handler(esp_gatts_cb_event_t event,
             	memset(&rsp, 0, sizeof(esp_gatt_rsp_t));
             	rsp.attr_value.handle = param->read.handle;
             	rsp.attr_value.len = 1;
+#if CONFIG_MOTORWISE_BLE_ONLY
+            	rsp.attr_value.value[0] = 1;	// Bluetooth is always on in the Motorwise reader
+#else
             	rsp.attr_value.value[0] = config_server_get_ble_config();
+#endif
 				esp_ble_gatts_send_response(gatts_if, param->read.conn_id, param->read.trans_id,
 						param->reg.status, &rsp);
 
@@ -520,7 +527,9 @@ static void gatts_profile_event_handler(esp_gatts_cb_event_t event,
             {
             	if(param->write.len == 1 && (param->write.value[0] == 0 || param->write.value[0] == 1))
             	{
+#if !CONFIG_MOTORWISE_BLE_ONLY
             		config_server_set_ble_config(param->write.value[0]);
+#endif
             	}
             }
             break;
@@ -557,8 +566,10 @@ static void gatts_profile_event_handler(esp_gatts_cb_event_t event,
             break;
         case ESP_GATTS_CONNECT_EVT:
             ESP_LOGI(GATTS_TABLE_TAG, "ESP_GATTS_CONNECT_EVT");
+#if !CONFIG_MOTORWISE_BLE_ONLY
         	config_server_stop();
         	wifi_network_deinit();
+#endif
 
     	    spp_conn_id = param->connect.conn_id;
     	    spp_gatts_if = gatts_if;

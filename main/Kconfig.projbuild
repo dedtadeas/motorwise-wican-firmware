@@ -12,3 +12,14 @@ config ESP_WIFI_PASSWORD
     help
 	WiFi password (WPA or WPA2) for the example to use.
 endmenu
+
+menu "Motorwise"
+config MOTORWISE_BLE_ONLY
+    bool "Motorwise read-only reader: Bluetooth LE only, no Wi-Fi"
+    default y
+    help
+	Builds the Motorwise read-only reader: ELM327 over Bluetooth LE only. The access point, the web
+	configuration server, Wi-Fi updates, MQTT, webhooks and the TCP port are left out of the build.
+	Settings are built in (see mw_settings.h); the Bluetooth passkey is read from NVS, written at
+	flash time by tools/flash_unit.sh.
+endmenu
