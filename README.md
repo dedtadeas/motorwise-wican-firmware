@@ -1,3 +1,8 @@
+> **Motorwise fork.** This is MeatPi's WiCAN firmware with changes for [Motorwise](https://motorwise.pitwallapp.workers.dev):
+> a read-only gate (only diagnostic read requests reach the car), Bluetooth LE only (no Wi-Fi), a per-unit pairing
+> code written over USB, and drive-aware sleep. See [docs/motorwise-read-only.md](docs/motorwise-read-only.md).
+> Licensed GPL-3.0 like the original. Not affiliated with or endorsed by MeatPi Electronics.
+
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset=".github/images/meatpi-logo-dark.svg">
   <img src=".github/images/meatpi-logo.svg" alt="MeatPi Electronics" width="300">
