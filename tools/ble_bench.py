@@ -97,12 +97,21 @@ def adapter_path():
     sys.exit('no Bluetooth adapter')
 
 
+def find_devices(name):
+    return [(path, ifaces['org.bluez.Device1']) for path, ifaces in objects().items()
+            if 'org.bluez.Device1' in ifaces and name in (ifaces['org.bluez.Device1'].get('Name'),
+                                                          ifaces['org.bluez.Device1'].get('Alias'))]
+
+
 def find_device(name):
-    for path, ifaces in objects().items():
-        d = ifaces.get('org.bluez.Device1')
-        if d and (d.get('Name') == name or d.get('Alias') == name):
-            return path, d
-    return None, None
+    # The reader advertises a resolvable private address that changes at each start, so BlueZ can hold several
+    # objects with its name: prefer the bonded one, then one heard now (RSSI).
+    found = find_devices(name)
+    for want in ('Paired', 'RSSI'):
+        for path, d in found:
+            if d.get(want):
+                return path, d
+    return found[0] if found else (None, None)
 
 
 def wait(cond, seconds, step=0.2):
@@ -200,10 +209,11 @@ def main():
     mode, name = sys.argv[1], sys.argv[2]
 
     if mode == 'remove':
-        path, _ = find_device(name)
-        if path:
+        found = find_devices(name)
+        for path, _ in found:
             dbus.Interface(bus.get_object(BUS, adapter_path()), 'org.bluez.Adapter1').RemoveDevice(path)
-            log(f'{name} forgotten on the laptop')
+        if found:
+            log(f'{name} forgotten on the laptop ({len(found)} entries)')
         else:
             log(f'{name} not known on the laptop')
         return 0
@@ -212,7 +222,16 @@ def main():
     agent = Agent(passkey)
     manager = dbus.Interface(bus.get_object(BUS, '/org/bluez'), 'org.bluez.AgentManager1')
     manager.RegisterAgent(AGENT_PATH, 'KeyboardOnly')
+    # The reader asks for security as soon as it is connected; BlueZ hands that to the default agent, so this one
+    # must be the default for the run (the desktop's agent gets it back when this one unregisters).
+    manager.RequestDefaultAgent(AGENT_PATH)
     ok = False
+    adapter_props = bus.get_object(BUS, adapter_path())
+    was_pairable = bool(adapter_props.Get('org.bluez.Adapter1', 'Pairable', dbus_interface='org.freedesktop.DBus.Properties'))
+    if mode == 'pair' and not was_pairable:
+        # Not pairable means not bondable: the reader accepts bonded pairing only. Restored at the end.
+        adapter_props.Set('org.bluez.Adapter1', 'Pairable', True, dbus_interface='org.freedesktop.DBus.Properties')
+        log('laptop adapter made pairable for this run')
     try:
         path = discover(name)
         dev = dbus.Interface(bus.get_object(BUS, path), 'org.bluez.Device1')
@@ -242,6 +261,9 @@ def main():
         log(f'failed: {e}')
     finally:
         manager.UnregisterAgent(AGENT_PATH)
+        if mode == 'pair' and not was_pairable:
+            adapter_props.Set('org.bluez.Adapter1', 'Pairable', False, dbus_interface='org.freedesktop.DBus.Properties')
+            log('laptop adapter back to not pairable')
     if mode == 'check' and agent.asked:
         log('RESULT: bond NOT kept (the reader asked to pair again)')
     else:
